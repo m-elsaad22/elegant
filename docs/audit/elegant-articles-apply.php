@@ -89,6 +89,10 @@ function elegant_apply_article( WP_REST_Request $req ) {
 	if ( isset( $p['excerpt'] ) ) {
 		$update['post_excerpt'] = wp_kses_post( $p['excerpt'] );
 	}
+	remove_action( 'post_updated', 'wp_save_post_revision', 10 );
+	add_filter( 'wp_revisions_to_keep', '__return_zero' );
+	wp_defer_term_counting( true );
+
 	wp_update_post( wp_slash( $update ), true );
 
 	$meta = isset( $p['meta'] ) && is_array( $p['meta'] ) ? $p['meta'] : array();
@@ -192,6 +196,8 @@ function elegant_apply_article( WP_REST_Request $req ) {
 	}
 
 	update_post_meta( $id, '_elegant_article_v', ELEGANT_ART_VER );
+
+	wp_defer_term_counting( false );
 
 	$post = get_post( $id );
 	$text = wp_strip_all_tags( $post->post_content );
