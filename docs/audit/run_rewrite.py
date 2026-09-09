@@ -153,10 +153,7 @@ def main():
             fail += 1
             print(f"{i}/{len(posts)} FAIL id={p['id']} {e}", flush=True)
             time.sleep(1)
-        if i % 15 == 0:
-            time.sleep(6)
-        else:
-            time.sleep(0.35)
+        time.sleep(7)
     print(json.dumps({"ok": ok, "fail": fail, "min_words": min(words) if words else 0, "max_words": max(words) if words else 0}, ensure_ascii=False))
 
 
