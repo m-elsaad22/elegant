@@ -40,7 +40,7 @@ def request(method: str, url: str, data: Any = None, timeout: int = 180) -> Any:
             err = e.read().decode("utf-8", "replace")
             last_err = RuntimeError(f"{method} {url} -> {e.code} {err[:400]}")
             if e.code in (429, 500, 502, 503, 504) or "timed out" in err.lower() or "busy" in err.lower():
-                time.sleep(min(45, 4 * (2 ** attempt)))
+                time.sleep(min(20, 3 * (2 ** attempt)))
                 continue
             raise last_err from e
         except Exception as e:
@@ -153,10 +153,10 @@ def main():
             fail += 1
             print(f"{i}/{len(posts)} FAIL id={p['id']} {e}", flush=True)
             time.sleep(1)
-        if i % 10 == 0:
-            time.sleep(1.2)
+        if i % 8 == 0:
+            time.sleep(12)
         else:
-            time.sleep(0.55)
+            time.sleep(0.8)
     print(json.dumps({"ok": ok, "fail": fail, "min_words": min(words) if words else 0, "max_words": max(words) if words else 0}, ensure_ascii=False))
 
 
