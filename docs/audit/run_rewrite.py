@@ -23,20 +23,30 @@ def auth_header() -> str:
     return "Basic " + base64.b64encode(f"{user}:{pw}".encode()).decode()
 
 
-def request(method: str, url: str, data: Any = None, timeout: int = 120) -> Any:
+def request(method: str, url: str, data: Any = None, timeout: int = 180) -> Any:
     body = None
     headers = {"Authorization": auth_header(), "User-Agent": UA, "Accept": "application/json"}
     if data is not None:
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json; charset=utf-8"
-    req = urllib.request.Request(url, data=body, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            raw = r.read().decode("utf-8")
-            return json.loads(raw) if raw else {}
-    except urllib.error.HTTPError as e:
-        err = e.read().decode("utf-8", "replace")
-        raise RuntimeError(f"{method} {url} -> {e.code} {err[:800]}") from e
+    last_err = None
+    for attempt in range(6):
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                raw = r.read().decode("utf-8")
+                return json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as e:
+            err = e.read().decode("utf-8", "replace")
+            last_err = RuntimeError(f"{method} {url} -> {e.code} {err[:400]}")
+            if e.code in (429, 500, 502, 503, 504) or "timed out" in err.lower() or "busy" in err.lower():
+                time.sleep(min(45, 4 * (2 ** attempt)))
+                continue
+            raise last_err from e
+        except Exception as e:
+            last_err = e
+            time.sleep(min(30, 3 * (2 ** attempt)))
+    raise last_err
 
 
 CACHE = "/tmp/elegant_posts_list.json"
@@ -106,9 +116,18 @@ def main():
         if limit:
             posts = posts[:limit]
 
+    worker = int(os.environ.get("REWRITE_WORKER", "0"))
+    workers = int(os.environ.get("REWRITE_WORKERS", "1"))
+    if workers > 1:
+        posts = [p for p in posts if (p["id"] % workers) == worker]
+        print(f"worker {worker}/{workers} slice={len(posts)}", flush=True)
+
+    done_path = DONE if workers <= 1 else f"{DONE}.{worker}"
     done = set()
-    if os.path.exists(DONE) and not only:
-        done = {int(x) for x in open(DONE) if x.strip().isdigit()}
+    for pth in [DONE] + [f"{DONE}.{w}" for w in range(max(workers, 8))]:
+        if os.path.exists(pth):
+            done |= {int(x) for x in open(pth) if x.strip().isdigit()}
+    if done and not only:
         posts = [p for p in posts if p["id"] not in done]
     print(f"to process: {len(posts)} dry={dry} skipped_done={len(done)}", flush=True)
     ok = fail = 0
@@ -127,15 +146,17 @@ def main():
                 f"{i}/{len(posts)} OK id={res.get('id')} words={res.get('words')} title={res.get('title','')[:70]}",
                 flush=True,
             )
-            with open(DONE, "a") as f:
+            with open(done_path, "a") as f:
                 f.write(str(p["id"]) + "\n")
             ok += 1
         except Exception as e:
             fail += 1
             print(f"{i}/{len(posts)} FAIL id={p['id']} {e}", flush=True)
             time.sleep(1)
-        if i % 25 == 0:
-            time.sleep(0.4)
+        if i % 10 == 0:
+            time.sleep(1.2)
+        else:
+            time.sleep(0.55)
     print(json.dumps({"ok": ok, "fail": fail, "min_words": min(words) if words else 0, "max_words": max(words) if words else 0}, ensure_ascii=False))
 
 
