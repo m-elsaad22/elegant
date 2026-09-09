@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 const ELEGANT_ART_WA = '201556644443';
-const ELEGANT_ART_VER = '20260909a';
+const ELEGANT_ART_VER = '20260909b';
 
 add_action(
 	'wp_head',
@@ -69,11 +69,7 @@ function elegant_art_switch_on() {
 	return 'on';
 }
 
-function elegant_apply_article( WP_REST_Request $req ) {
-	$p = $req->get_json_params();
-	if ( ! is_array( $p ) ) {
-		$p = $req->get_params();
-	}
+function elegant_apply_payload( $p ) {
 	$id = isset( $p['id'] ) ? (int) $p['id'] : 0;
 	if ( ! $id || get_post_type( $id ) !== 'post' ) {
 		return new WP_Error( 'bad_id', 'Invalid post', array( 'status' => 400 ) );
@@ -113,7 +109,7 @@ function elegant_apply_article( WP_REST_Request $req ) {
 	update_post_meta( $id, 'hide_services_section', '' );
 	update_post_meta( $id, 'hide_price_list__section', '' );
 	update_post_meta( $id, 'hide_call_section', '' );
-	update_post_meta( $id, 'hide_post_gallery', 'on' );
+	update_post_meta( $id, 'hide__feedback__rating', 'on' );
 	update_post_meta( $id, 'articon', '<i class="fas fa-swimming-pool"></i>' );
 
 	if ( ! empty( $p['faqs'] ) && is_array( $p['faqs'] ) ) {
@@ -211,6 +207,14 @@ function elegant_apply_article( WP_REST_Request $req ) {
 		'title'  => $post->post_title,
 		'ver'    => ELEGANT_ART_VER,
 	);
+}
+
+function elegant_apply_article( WP_REST_Request $req ) {
+	$p = $req->get_json_params();
+	if ( ! is_array( $p ) ) {
+		$p = $req->get_params();
+	}
+	return elegant_apply_payload( $p );
 }
 
 add_action(
