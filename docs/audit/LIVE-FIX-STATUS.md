@@ -1,22 +1,19 @@
-# حالة إصلاح الموقع الحي — elegantswimmingpools.com
+# ارفع الملف الكامل — الموقع مكسور بسبب ملف ناقص
 
-تاريخ التحديث: 17 سبتمبر 2026 — MU-plugin v3.0.0
+**السبب:** الكود الظاهر فوق الصفحة (`public static function force_kayan_home_query`) اتعرض لأن الملف في `mu-plugins` اتحفظ **من غير** `<?php` في أول سطر. PHP ساعتها يطبع الملف كنص قبل `<!DOCTYPE>`. هيرو الرئيسية لسه على `/blog/` لأن الإضافة الحقيقية ما اشتغلتش.
 
-## ارفع هذا الملف الآن
+## اعمل الآتي الآن
 
-`docs/audit/mu-plugins/elegant-live-fix.php` → `wp-content/mu-plugins/elegant-live-fix.php`
+1. احذف أي ملف ناقص في `wp-content/mu-plugins/` (خصوصاً أي نسخة فيها `force_kayan_home_query` لوحدها).
+2. ارفع **الملف كاملاً** من المستودع:
+   `docs/audit/mu-plugins/elegant-live-fix.php`
+   إلى:
+   `wp-content/mu-plugins/elegant-live-fix.php`
+3. أول حرفين لازم يكونوا `<?php` — لو فتحت الملف في File Manager ولاقيت السطر الأول `public static function` يبقى الملف غلط.
+4. LiteSpeed Cache → Purge All.
+5. افتح `https://elegantswimmingpools.com/` (يفضّل نافذة خاصة).
 
-لا تغيّر إعداد القراءة. الصفحة الثابتة (ID 7411) تبقى كما هي. الإضافة تجبر `is_home()` عليها لأن `ThemeStatic::Locate()` في KAYAN 1.4.2 يعرض هيرو الرئيسية فقط عندما `is_home() === true`.
-
-بعد الرفع: LiteSpeed → Purge All، ثم افتح `/` و`/blog/` و`/services/`.
-
-## ماذا يفعل v3
-
-1. **هيرو الرئيسية:** `parse_query` + `wp` يضبطان الصفحة الأمامية كـ `is_home`/`is_front_page` ويمنعان `/blog/` من أن تُعامل كرئيسية.
-2. **أرقام وخريطة وحقوق:** output buffer على `template_redirect` (-5) يستبدل `201556644443` / `201151481000` بـ `971521300019`، خريطة دبي بـ مصفح 23 شارع 15 أبوظبي، ويزيل اعتماد KAYAN WEB / كيان ويب. DNI JSON يُصحَّح عبر `rest_post_dispatch`.
-3. **`/services/`:** CPT بدون أرشيف وعلى slug `pool-service`، وفلتر `request` يحمّل صفحة الخدمات إن وُجدت.
-4. **SEO:** `title-tag` + حقن `<title>` إن غاب، وJSON-LD من نوع `LocalBusiness` لأبوظبي على `+971521300019`.
-
-## ما تم تطبيقه سابقاً عبر REST (قبل قفل Wordfence)
-
-صفحات من نحن / اتصل بنا / الأسئلة / المدن / الخصوصية / خريطة الموقع، القوائم، والتوقيت `Asia/Dubai`. الرئيسية و`/services/` والأرقام في القالب لم تكتمل لأن REST أُغلق.
+الإصدار 4.0.0:
+- يرجّع الرئيسية إلى «أحدث المقالات» عشان هيرو KAYAN 1.4.2 يظهر على `/` مش `/blog/`
+- يمسح أي تسريب PHP قبل `<!DOCTYPE>`
+- يوحّد الأرقام والخريطة ويحل `/services/`
