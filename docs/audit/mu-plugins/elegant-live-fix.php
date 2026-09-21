@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elegant Live Fix
  * Description: Restore the KAYAN homepage, UAE phones/map, /services/ page, title + LocalBusiness schema. Upload this COMPLETE file.
- * Version:     4.0.0
+ * Version:     4.1.0
  *
  * INSTALL (cPanel File Manager):
  *   wp-content/mu-plugins/elegant-live-fix.php
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'ELEGANT_LIVE_FIX_VER' ) ) {
-	define( 'ELEGANT_LIVE_FIX_VER', '4.0.0' );
+	define( 'ELEGANT_LIVE_FIX_VER', '4.1.0' );
 }
 
 final class Elegant_Live_Fix {
@@ -37,6 +37,7 @@ final class Elegant_Live_Fix {
 		add_action( 'init', array( __CLASS__, 'maybe_flush_rewrites' ), 99 );
 		add_action( 'after_setup_theme', array( __CLASS__, 'theme_supports' ), 20 );
 		add_action( 'wp_head', array( __CLASS__, 'print_schema' ), 1 );
+		add_action( 'wp_head', array( __CLASS__, 'print_fab_css' ), 99 );
 		add_filter( 'rest_post_dispatch', array( __CLASS__, 'filter_dni_rest' ), 10, 3 );
 		add_filter( 'wp_is_application_passwords_available', '__return_true', 999 );
 	}
@@ -226,6 +227,36 @@ final class Elegant_Live_Fix {
 		}
 
 		return $html;
+	}
+
+	/**
+	 * The 3D booking snippet stretches WhatsApp/Call into full-width pills.
+	 * Restore classic circular FABs in the bottom corner.
+	 */
+	public static function print_fab_css() {
+		if ( is_admin() ) {
+			return;
+		}
+		echo '<style id="elegant-fab-corner">'
+			. 'html body #elegant-3d-dock{display:none!important}'
+			. 'html body .fab-stack,html body .fab-stack#ruknFab{'
+			. 'display:flex!important;flex-direction:column!important;gap:12px!important;'
+			. 'opacity:1!important;visibility:visible!important;transform:none!important;'
+			. 'position:fixed!important;bottom:18px!important;left:16px!important;right:auto!important;'
+			. 'inset-inline-start:auto!important;inset-inline-end:auto!important;z-index:100000!important;'
+			. 'width:auto!important;margin:0!important;padding:0!important}'
+			. 'html body a.fab-btn,html body a.fab-btn.fab-wa,html body a.fab-btn.fab-call,'
+			. 'html body.rukn-hide-call a.fab-btn.fab-call,html body .fab-stack a.fab-btn{'
+			. 'display:grid!important;place-items:center!important;'
+			. 'width:56px!important;height:56px!important;min-width:56px!important;max-width:56px!important;'
+			. 'padding:0!important;margin:0!important;border:0!important;border-radius:50%!important;'
+			. 'color:#fff!important;font-size:22px!important;line-height:1!important;'
+			. 'transform:none!important;box-shadow:0 8px 20px rgba(10,31,78,.28)!important}'
+			. 'html body a.fab-btn.fab-wa{background:#25D366!important}'
+			. 'html body a.fab-btn.fab-call{background:#0EA5C0!important}'
+			. 'html body a.fab-btn:hover,html body a.fab-btn:active{transform:none!important;filter:brightness(1.05)}'
+			. '@media(min-width:769px){html body .fab-stack,html body .fab-stack#ruknFab{bottom:24px!important;left:22px!important}}'
+			. '</style>' . "\n";
 	}
 
 	public static function print_schema() {
