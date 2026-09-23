@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Elegant Live Fix
  * Description: Restore the KAYAN homepage, UAE phones/map, /services/ page, title + LocalBusiness schema. Upload this COMPLETE file.
- * Version:     4.1.0
+ * Version:     4.2.0
  *
  * INSTALL (cPanel File Manager):
  *   wp-content/mu-plugins/elegant-live-fix.php
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'ELEGANT_LIVE_FIX_VER' ) ) {
-	define( 'ELEGANT_LIVE_FIX_VER', '4.1.0' );
+	define( 'ELEGANT_LIVE_FIX_VER', '4.2.0' );
 }
 
 final class Elegant_Live_Fix {
@@ -37,7 +37,7 @@ final class Elegant_Live_Fix {
 		add_action( 'init', array( __CLASS__, 'maybe_flush_rewrites' ), 99 );
 		add_action( 'after_setup_theme', array( __CLASS__, 'theme_supports' ), 20 );
 		add_action( 'wp_head', array( __CLASS__, 'print_schema' ), 1 );
-		add_action( 'wp_head', array( __CLASS__, 'print_fab_css' ), 99 );
+		add_action( 'wp_footer', array( __CLASS__, 'print_fab_markup' ), 999 );
 		add_filter( 'rest_post_dispatch', array( __CLASS__, 'filter_dni_rest' ), 10, 3 );
 		add_filter( 'wp_is_application_passwords_available', '__return_true', 999 );
 	}
@@ -230,33 +230,30 @@ final class Elegant_Live_Fix {
 	}
 
 	/**
-	 * The 3D booking snippet stretches WhatsApp/Call into full-width pills.
-	 * Restore classic circular FABs in the bottom corner.
+	 * Print our own circular corner FABs at the very end of the document.
+	 * Later Code Snippets CSS hides .fab-btn; IDs here win that fight.
 	 */
-	public static function print_fab_css() {
+	public static function print_fab_markup() {
 		if ( is_admin() ) {
 			return;
 		}
+		$wa  = 'https://wa.me/' . self::PHONE_E164;
+		$tel = 'tel:' . self::PHONE_LOCAL;
+		$icon_wa = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="26" height="26" fill="#fff" aria-hidden="true"><path d="M20.5 3.5A11 11 0 0 0 1.9 18.7L1 23l4.4-.9A11 11 0 0 0 12 23a11 11 0 0 0 8.5-19.5zM12 21.2a9.2 9.2 0 0 1-4.7-1.3l-.3-.2-2.6.5.5-2.5-.2-.3A9.2 9.2 0 1 1 12 21.2zm5.3-6.9c-.3-.1-1.7-.8-2-.9s-.5-.1-.7.2l-.9 1.1c-.2.2-.3.2-.6.1a7.5 7.5 0 0 1-2.2-1.4 8.3 8.3 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.5-.6.2-.3a.5.5 0 0 0 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6a1.2 1.2 0 0 0-.9.4 3.6 3.6 0 0 0-1.1 2.7 6.3 6.3 0 0 0 1.3 3.3 14.4 14.4 0 0 0 5.5 5 19 19 0 0 0 1.9.7 4.5 4.5 0 0 0 2.1.1 3.4 3.4 0 0 0 2.2-1.5 2.8 2.8 0 0 0 .2-1.5c-.1-.1-.3-.2-.6-.3z"/></svg>';
+		$icon_call = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="#fff" aria-hidden="true"><path d="M6.6 10.8a15.2 15.2 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.2 11.4 11.4 0 0 0 3.6.6 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.4 11.4 0 0 0 .6 3.6 1 1 0 0 1-.3 1z"/></svg>';
 		echo '<style id="elegant-fab-corner">'
-			. 'html body #elegant-3d-dock{display:none!important}'
-			. 'html body .fab-stack,html body .fab-stack#ruknFab{'
-			. 'display:flex!important;flex-direction:column!important;gap:12px!important;'
-			. 'opacity:1!important;visibility:visible!important;transform:none!important;'
-			. 'position:fixed!important;bottom:18px!important;left:16px!important;right:auto!important;'
-			. 'inset-inline-start:auto!important;inset-inline-end:auto!important;z-index:100000!important;'
-			. 'width:auto!important;margin:0!important;padding:0!important}'
-			. 'html body a.fab-btn,html body a.fab-btn.fab-wa,html body a.fab-btn.fab-call,'
-			. 'html body.rukn-hide-call a.fab-btn.fab-call,html body .fab-stack a.fab-btn{'
-			. 'display:grid!important;place-items:center!important;'
-			. 'width:56px!important;height:56px!important;min-width:56px!important;max-width:56px!important;'
-			. 'padding:0!important;margin:0!important;border:0!important;border-radius:50%!important;'
-			. 'color:#fff!important;font-size:22px!important;line-height:1!important;'
-			. 'transform:none!important;box-shadow:0 8px 20px rgba(10,31,78,.28)!important}'
-			. 'html body a.fab-btn.fab-wa{background:#25D366!important}'
-			. 'html body a.fab-btn.fab-call{background:#0EA5C0!important}'
-			. 'html body a.fab-btn:hover,html body a.fab-btn:active{transform:none!important;filter:brightness(1.05)}'
-			. '@media(min-width:769px){html body .fab-stack,html body .fab-stack#ruknFab{bottom:24px!important;left:22px!important}}'
-			. '</style>' . "\n";
+			. 'html body #elegant-3d-dock,html body .fab-stack,html body #ruknFab{display:none!important}'
+			. 'html body #elegant-corner-fabs{position:fixed!important;left:16px!important;right:auto!important;bottom:18px!important;z-index:2147483000!important;display:flex!important;flex-direction:column!important;gap:10px!important;width:56px!important;margin:0!important;padding:0!important;pointer-events:none}'
+			. 'html body #elegant-corner-fabs a,html body.rukn-hide-call #elegant-corner-call,html body.rukn-hide-wa #elegant-corner-wa,html body.rukn-hide-call a#elegant-corner-call[href^="tel:"]{pointer-events:auto;display:flex!important;align-items:center!important;justify-content:center!important;width:56px!important;height:56px!important;min-width:56px!important;border-radius:50%!important;text-decoration:none!important;box-shadow:0 8px 20px rgba(10,31,78,.3)!important;visibility:visible!important;opacity:1!important}'
+			. 'html body #elegant-corner-call{background:#0EA5C0!important}'
+			. 'html body #elegant-corner-wa{background:#25D366!important}'
+			. 'html body #elegant-corner-fabs svg{display:block;width:26px;height:26px}'
+			. '@media(min-width:769px){html body #elegant-corner-fabs{left:22px!important;bottom:24px!important}}'
+			. '</style>'
+			. '<div id="elegant-corner-fabs">'
+			. '<a id="elegant-corner-call" href="' . esc_attr( $tel ) . '" aria-label="اتصال">' . $icon_call . '</a>'
+			. '<a id="elegant-corner-wa" href="' . esc_url( $wa ) . '" target="_blank" rel="noopener noreferrer" aria-label="واتساب">' . $icon_wa . '</a>'
+			. '</div>' . "\n";
 	}
 
 	public static function print_schema() {
