@@ -13,13 +13,73 @@ if ( ! defined( 'ABSPATH' ) ) {
 if ( ! defined( 'ELEGANT_UI_WA' ) ) {
 	define( 'ELEGANT_UI_WA', '201556644443' );
 }
-if ( get_option( 'elegant_ui_ver' ) !== '20260911a' ) {
-	update_option( 'elegant_ui_ver', '20260911a' );
+
+if ( ! defined( 'ELEGANT_UI_LOADED' ) ) :
+define( 'ELEGANT_UI_LOADED', true );
+
+if ( get_option( 'elegant_ui_ver' ) !== '20261004a' ) {
+	update_option( 'elegant_ui_ver', '20261004a' );
 	if ( function_exists( 'speedycache_delete_cache' ) ) {
 		speedycache_delete_cache( true );
 	}
 	do_action( 'litespeed_purge_all' );
 }
+
+/**
+ * If the public front controller was replaced with a stub (body "test"),
+ * write the standard WordPress index.php and a default .htaccess.
+ */
+function elegant_ui_restore_front_controller( $force = false ) {
+	$result = array(
+		'abspath' => ABSPATH,
+		'idx'     => ABSPATH . 'index.php',
+		'written' => false,
+		'ht'      => false,
+		'preview' => '',
+		'error'   => '',
+	);
+	$idx = ABSPATH . 'index.php';
+	$src = @file_get_contents( $idx );
+	$trim = is_string( $src ) ? trim( $src ) : '';
+	$result['preview'] = is_string( $src ) ? substr( $trim, 0, 120 ) : 'unreadable';
+	$broken = ( $src === false || strlen( $trim ) < 80 || stripos( $trim, 'wp-blog-header.php' ) === false );
+	if ( $force || $broken ) {
+		$php  = "<?php\n";
+		$php .= "/**\n * Front to the WordPress application.\n *\n * @package WordPress\n */\n";
+		$php .= "define( 'WP_USE_THEMES', true );\n";
+		$php .= "require __DIR__ . '/wp-blog-header.php';\n";
+		$ok = @file_put_contents( $idx, $php );
+		if ( $ok === false ) {
+			$result['error'] = 'cannot_write_index';
+		} else {
+			$result['written'] = true;
+			$src = @file_get_contents( $idx );
+			$result['preview'] = is_string( $src ) ? substr( trim( $src ), 0, 120 ) : '';
+		}
+	}
+	$ht = ABSPATH . '.htaccess';
+	$ht_src = is_readable( $ht ) ? (string) @file_get_contents( $ht ) : '';
+	if ( $force || strlen( $ht_src ) < 40 || stripos( $ht_src, 'RewriteEngine' ) === false ) {
+		$rules  = "# BEGIN WordPress\n<IfModule mod_rewrite.c>\nRewriteEngine On\n";
+		$rules .= "RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]\nRewriteBase /\n";
+		$rules .= "RewriteRule ^index\\.php\$ - [L]\nRewriteCond %{REQUEST_FILENAME} !-f\n";
+		$rules .= "RewriteCond %{REQUEST_FILENAME} !-d\nRewriteRule . /index.php [L]\n";
+		$rules .= "</IfModule>\n# END WordPress\n";
+		$okht = @file_put_contents( $ht, $rules );
+		$result['ht'] = ( $okht !== false );
+	}
+	if ( $result['written'] || ( is_string( $src ) && stripos( $src, 'wp-blog-header.php' ) !== false ) ) {
+		update_option( 'elegant_ui_restore_idx', '20261004a' );
+		do_action( 'litespeed_purge_all' );
+	}
+	return $result;
+}
+add_action( 'init', function () {
+	if ( get_option( 'elegant_ui_restore_idx' ) === '20261004a' ) {
+		return;
+	}
+	elegant_ui_restore_front_controller( false );
+}, 1 );
 
 /** @return array<string,mixed> */
 function elegant_ui_opts() {
@@ -488,11 +548,26 @@ function elegant_ui_rest_settings( WP_REST_Request $req ) {
 		if ( isset( $p['book_on'] ) ) {
 			update_option( 'elegant_ui_book_on', empty( $p['book_on'] ) ? 0 : 1 );
 		}
+		if ( ! empty( $p['restore_front'] ) ) {
+			delete_option( 'elegant_ui_restore_idx' );
+			$o_restore = elegant_ui_restore_front_controller( true );
+		}
 		do_action( 'litespeed_purge_all' );
 	}
 	$o            = elegant_ui_opts();
 	$o['tg_token']  = $o['tg_token'] ? 'saved' : '';
 	$o['promo_src'] = $o['promo_img'] ? wp_get_attachment_image_url( (int) $o['promo_img'], 'medium' ) : '';
+	if ( isset( $o_restore ) ) {
+		$o['restore'] = $o_restore;
+	} else {
+		$idx = ABSPATH . 'index.php';
+		$src = is_readable( $idx ) ? (string) @file_get_contents( $idx ) : '';
+		$o['restore'] = array(
+			'abspath' => ABSPATH,
+			'preview' => substr( trim( $src ), 0, 120 ),
+			'flag'    => get_option( 'elegant_ui_restore_idx' ),
+		);
+	}
 	return $o;
 }
 
@@ -845,8 +920,15 @@ html body a.btn-ket_1:active,html body a.btn-ket_2:active,html body .elg-btn:act
 html body a.fab-btn:active{
   transform:translateY(4px)!important;box-shadow:0 1px 0 rgba(0,0,0,.25),inset 0 2px 6px rgba(0,0,0,.2)!important
 }
-html body a.fab-btn.fab-wa,html body a.fab-btn.fab-call{
+html body a.fab-btn.fab-wa,html body a.fab-btn.fab-call,
+html body #elegant-corner-fabs a{
   border:0!important;border-radius:50%!important;color:#fff!important
+}
+html body #elegant-corner-call,html body a.fab-btn.fab-call{
+  background:linear-gradient(180deg,#5ad7ea 0%,#1cb5c9 48%,#0ea5c0 100%)!important
+}
+html body #elegant-corner-wa,html body a.fab-btn.fab-wa{
+  background:linear-gradient(180deg,#57e06a 0%,#2ecc4a 48%,#1db954 100%)!important
 }
 #elegant-3d-dock{display:none}
 @media(max-width:768px){
@@ -883,8 +965,13 @@ html body a.fab-btn.fab-wa,html body a.fab-btn.fab-call{
 </style>';
 }
 
-add_action( 'wp_footer', 'elegant_ui_print_js', 120 );
+add_action( 'wp_footer', 'elegant_ui_print_js', 1001 );
 function elegant_ui_print_js() {
+	echo '<style id="elegant-3d-dock-show">
+@media(max-width:768px){html body #elegant-3d-dock{display:flex!important;position:fixed!important;left:12px!important;right:12px!important;bottom:10px!important;z-index:2147483001!important;flex-direction:column!important;gap:8px!important}html body #elegant-corner-fabs{display:none!important}}
+html body #elegant-corner-call{background:linear-gradient(180deg,#5ad7ea 0%,#1cb5c9 48%,#0ea5c0 100%)!important;box-shadow:0 5px 0 #0a7a90,0 8px 16px rgba(10,122,144,.3),inset 0 2px 0 rgba(255,255,255,.4)!important}
+html body #elegant-corner-wa{background:linear-gradient(180deg,#57e06a 0%,#2ecc4a 48%,#1db954 100%)!important;box-shadow:0 5px 0 #148a2a,0 8px 16px rgba(20,138,42,.3),inset 0 2px 0 rgba(255,255,255,.4)!important}
+</style>';
 	$o     = elegant_ui_opts();
 	$promo = array( 'on' => false );
 	if ( ! empty( $o['promo_on'] ) && ! empty( $o['promo_img'] ) ) {
@@ -1096,3 +1183,5 @@ function elegant_ui_print_js() {
 </script>
 	<?php
 }
+
+endif;
