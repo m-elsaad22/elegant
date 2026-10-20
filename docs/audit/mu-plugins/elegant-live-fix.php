@@ -1,13 +1,16 @@
 <?php
 /**
  * Plugin Name: Elegant Live Fix
- * Description: Restore the KAYAN homepage, UAE phones/map, /services/ page, title + LocalBusiness schema. Upload this COMPLETE file.
- * Version:     4.2.0
+ * Description: Restore the KAYAN homepage, UAE phones/map, /services/ page, GSC index coverage, title + LocalBusiness schema. Upload this COMPLETE file.
+ * Version:     5.0.0
  *
  * INSTALL (cPanel File Manager):
  *   wp-content/mu-plugins/elegant-live-fix.php
  * The first characters of this file MUST be: <?php
  * Do not paste a function fragment. Do not close the PHP tag at the end of this file.
+ *
+ * Also replace public_html/robots.txt with the copy in docs/audit/cpanel/robots.txt
+ * if this plugin cannot write it. Then LiteSpeed Cache → Purge All (including 404).
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -15,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'ELEGANT_LIVE_FIX_VER' ) ) {
-	define( 'ELEGANT_LIVE_FIX_VER', '4.2.0' );
+	define( 'ELEGANT_LIVE_FIX_VER', '5.0.0' );
 }
 
 final class Elegant_Live_Fix {
@@ -28,15 +31,28 @@ final class Elegant_Live_Fix {
 	const MAP_QUERY     = 'Mussafah+23+Street+15+Abu+Dhabi';
 	const BLOG_PAGE_ID  = 170;
 	const FRONT_DEAD_ID = 7411;
+	const EMPTY_SITEMAP_PAGE_ID = 282;
 
 	public static function boot() {
 		self::boot_buffer();
 		add_action( 'init', array( __CLASS__, 'restore_posts_homepage' ), 0 );
+		add_action( 'init', array( __CLASS__, 'repair_public_files' ), 1 );
 		add_filter( 'register_post_type_args', array( __CLASS__, 'services_cpt_args' ), 99, 2 );
 		add_filter( 'request', array( __CLASS__, 'services_page_wins' ), 1 );
 		add_action( 'init', array( __CLASS__, 'maybe_flush_rewrites' ), 99 );
 		add_action( 'after_setup_theme', array( __CLASS__, 'theme_supports' ), 20 );
+		add_action( 'pre_get_posts', array( __CLASS__, 'constrain_home_query' ), 1 );
+		add_action( 'template_redirect', array( __CLASS__, 'redirect_paged_home' ), 0 );
+		add_filter( 'redirect_canonical', array( __CLASS__, 'stop_pretty_trap' ), 10, 2 );
+		add_filter( 'robots_txt', array( __CLASS__, 'filter_robots_txt' ), 99, 2 );
+		add_filter( 'wp_robots', array( __CLASS__, 'filter_wp_robots' ), 99 );
+		add_filter( 'rank_math/frontend/robots', array( __CLASS__, 'filter_rank_math_robots' ), 99 );
+		add_filter( 'rank_math/frontend/disable_adjacent_rel_links', '__return_true', 99 );
+		add_filter( 'rank_math/sitemap/enable_caching', '__return_false', 99 );
+		add_filter( 'rank_math/sitemap/content', array( __CLASS__, 'rewrite_html' ), 99 );
+		add_filter( 'rank_math/sitemap/entry', array( __CLASS__, 'filter_sitemap_entry' ), 99, 3 );
 		add_action( 'wp_head', array( __CLASS__, 'print_schema' ), 1 );
+		add_action( 'wp_head', array( __CLASS__, 'print_noindex_if_needed' ), 0 );
 		add_action( 'wp_footer', array( __CLASS__, 'print_fab_markup' ), 999 );
 		add_filter( 'rest_post_dispatch', array( __CLASS__, 'filter_dni_rest' ), 10, 3 );
 		add_filter( 'wp_is_application_passwords_available', '__return_true', 999 );
@@ -80,9 +96,7 @@ final class Elegant_Live_Fix {
 				)
 			);
 		}
-		if ( function_exists( 'do_action' ) ) {
-			do_action( 'litespeed_purge_all' );
-		}
+		self::purge_all_caches();
 	}
 
 	public static function theme_supports() {
@@ -125,6 +139,131 @@ final class Elegant_Live_Fix {
 		}
 		flush_rewrite_rules( false );
 		update_option( 'elegant_live_fix_rewrites', ELEGANT_LIVE_FIX_VER, false );
+		self::purge_all_caches();
+	}
+
+	/**
+	 * Homepage is a KAYAN landing page, not a paginated blog. rel=next to /page/2/
+	 * is a GSC 404 and a duplicate-home signal.
+	 */
+	public static function constrain_home_query( $query ) {
+		if ( is_admin() || ! $query->is_main_query() ) {
+			return;
+		}
+		if ( ! $query->is_home() ) {
+			return;
+		}
+		$query->set( 'no_found_rows', true );
+		if ( (int) $query->get( 'paged' ) > 1 ) {
+			$query->set( 'paged', 1 );
+		}
+	}
+
+	public static function redirect_paged_home() {
+		if ( is_admin() ) {
+			return;
+		}
+		if ( ( is_home() || is_front_page() ) && is_paged() ) {
+			wp_safe_redirect( home_url( '/' ), 301 );
+			exit;
+		}
+	}
+
+	/**
+	 * Pretty permalinks currently 404 at LiteSpeed before PHP. Do not 301 a working
+	 * ?pagename= / index.php URL onto a dead pretty permalink.
+	 */
+	public static function stop_pretty_trap( $redirect_url, $requested_url ) {
+		unset( $requested_url );
+		if ( empty( $redirect_url ) ) {
+			return $redirect_url;
+		}
+		if ( isset( $_GET['pagename'] ) || isset( $_GET['page_id'] ) || isset( $_GET['p'] ) || isset( $_GET['name'] ) || isset( $_GET['sitemap'] ) || isset( $_GET['rest_route'] ) ) {
+			return false;
+		}
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+		if ( strpos( $uri, 'index.php' ) !== false ) {
+			return false;
+		}
+		return $redirect_url;
+	}
+
+	public static function filter_robots_txt( $output, $public ) {
+		unset( $output, $public );
+		return self::robots_body();
+	}
+
+	public static function filter_wp_robots( $robots ) {
+		if ( ! is_array( $robots ) ) {
+			$robots = array();
+		}
+		if ( self::current_url_should_noindex() ) {
+			$robots['noindex']  = true;
+			$robots['nofollow'] = true;
+		}
+		return $robots;
+	}
+
+	public static function filter_rank_math_robots( $robots ) {
+		if ( ! is_array( $robots ) ) {
+			$robots = array();
+		}
+		if ( self::current_url_should_noindex() ) {
+			$robots['index']  = 'noindex';
+			$robots['follow'] = 'nofollow';
+		}
+		return $robots;
+	}
+
+	/**
+	 * Drop thin/off-market URLs and the empty /sitemap/ page from Rank Math XML.
+	 *
+	 * @param array|false $url URL parts.
+	 * @param string      $type post|term|user.
+	 * @param object      $object Post or term.
+	 * @return array|false
+	 */
+	public static function filter_sitemap_entry( $url, $type, $object ) {
+		unset( $type );
+		if ( empty( $url ) || ! is_array( $url ) || empty( $url['loc'] ) ) {
+			return $url;
+		}
+		$loc = (string) $url['loc'];
+		if ( self::is_off_market_text( $loc ) ) {
+			return false;
+		}
+		$path = (string) parse_url( $loc, PHP_URL_PATH );
+		if ( $path === '/sitemap/' || $path === '/sitemap' ) {
+			return false;
+		}
+		if ( is_object( $object ) && isset( $object->ID ) && (int) $object->ID === self::EMPTY_SITEMAP_PAGE_ID ) {
+			return false;
+		}
+		if ( is_object( $object ) && ! empty( $object->post_name ) && self::is_off_market_text( $object->post_name . ' ' . ( isset( $object->post_title ) ? $object->post_title : '' ) ) ) {
+			return false;
+		}
+		if ( is_object( $object ) && ! empty( $object->slug ) && self::is_off_market_text( $object->slug . ' ' . ( isset( $object->name ) ? $object->name : '' ) ) ) {
+			return false;
+		}
+		return $url;
+	}
+
+	public static function print_noindex_if_needed() {
+		if ( is_admin() || ! self::current_url_should_noindex() ) {
+			return;
+		}
+		echo '<meta name="robots" content="noindex, nofollow" />' . "\n";
+	}
+
+	/**
+	 * Overwrite the physical robots.txt (LiteSpeed never hits WP for /robots.txt),
+	 * quarantine gambling HTML parked on /contact-us/ and /cities/, and merge
+	 * rewrite rules so pretty permalinks and Rank Math XML reach WordPress.
+	 */
+	public static function repair_public_files() {
+		self::write_robots_file();
+		self::quarantine_spam_paths();
+		self::ensure_htaccess_rules();
 	}
 
 	/**
@@ -134,6 +273,10 @@ final class Elegant_Live_Fix {
 	public static function rewrite_html( $html ) {
 		if ( ! is_string( $html ) || $html === '' ) {
 			return $html;
+		}
+
+		if ( strpos( $html, '<sitemapindex' ) !== false || strpos( $html, '<urlset' ) !== false ) {
+			return self::rewrite_sitemap_xml( $html );
 		}
 
 		$doc = stripos( $html, '<!DOCTYPE' );
@@ -155,6 +298,13 @@ final class Elegant_Live_Fix {
 			);
 			if ( is_string( $stripped ) ) {
 				$html = $stripped;
+			}
+		}
+
+		if ( strpos( $html, 'rel=' ) !== false && strpos( $html, '/page/' ) !== false ) {
+			$no_rel = preg_replace( '#<link\b[^>]*href=["\'][^"\']*/page/[0-9]+/?["\'][^>]*>#i', '', $html );
+			if ( is_string( $no_rel ) ) {
+				$html = $no_rel;
 			}
 		}
 
@@ -227,6 +377,66 @@ final class Elegant_Live_Fix {
 		}
 
 		return $html;
+	}
+
+	/**
+	 * LiteSpeed 404s pretty Rank Math XML. Point every <loc> at the query form
+	 * that already returns 200: /?sitemap=post&sitemap_n=1
+	 */
+	private static function rewrite_sitemap_xml( $xml ) {
+		$sheet = strpos( $xml, '<?xml-stylesheet' );
+		if ( $sheet !== false ) {
+			$end = strpos( $xml, '>', $sheet );
+			if ( $end !== false ) {
+				$xml = substr( $xml, 0, $sheet ) . ltrim( substr( $xml, $end + 1 ) );
+			}
+		}
+		$rewritten = preg_replace_callback(
+			'#https?://[^/\s<]+/([a-z0-9_-]+)-sitemap([0-9]+)?\.xml#i',
+			array( __CLASS__, 'sitemap_loc_to_query' ),
+			$xml
+		);
+		if ( is_string( $rewritten ) ) {
+			$xml = $rewritten;
+		}
+		$home = preg_replace_callback(
+			'#<(loc)>\s*(https?://[^<\s]+/sitemap_index\.xml)\s*</\1>#i',
+			array( __CLASS__, 'sitemap_index_loc_to_query' ),
+			$xml
+		);
+		if ( is_string( $home ) ) {
+			$xml = $home;
+		}
+		$dropped = preg_replace(
+			'#<url>\s*<loc>\s*https?://[^<\s]+/sitemap/?\s*</loc>.*?</url>#is',
+			'',
+			$xml
+		);
+		if ( is_string( $dropped ) ) {
+			$xml = $dropped;
+		}
+		return $xml;
+	}
+
+	/**
+	 * @param array $m Regex matches.
+	 * @return string
+	 */
+	public static function sitemap_loc_to_query( $m ) {
+		$type  = strtolower( $m[1] );
+		$query = 'sitemap=' . rawurlencode( $type );
+		if ( isset( $m[2] ) && $m[2] !== '' ) {
+			$query .= '&sitemap_n=' . rawurlencode( $m[2] );
+		}
+		return htmlspecialchars( home_url( '/?' . $query ), ENT_QUOTES | ENT_XML1, 'UTF-8' );
+	}
+
+	/**
+	 * @param array $m Regex matches.
+	 * @return string
+	 */
+	public static function sitemap_index_loc_to_query( $m ) {
+		return '<' . $m[1] . '>' . home_url( '/?sitemap=1' ) . '</' . $m[1] . '>';
 	}
 
 	/**
@@ -311,7 +521,7 @@ final class Elegant_Live_Fix {
 		if ( $uri === '' ) {
 			return false;
 		}
-		if ( strpos( $uri, '/wp-json/' ) !== false || strpos( $uri, 'admin-ajax.php' ) !== false ) {
+		if ( strpos( $uri, '/wp-json/' ) !== false || strpos( $uri, 'admin-ajax.php' ) !== false || strpos( $uri, 'rest_route=' ) !== false ) {
 			return true;
 		}
 		if ( strpos( $uri, '/wp-admin/' ) !== false && strpos( $uri, 'admin-post.php' ) === false ) {
@@ -321,6 +531,283 @@ final class Elegant_Live_Fix {
 			return true;
 		}
 		return false;
+	}
+
+	private static function current_url_should_noindex() {
+		if ( function_exists( 'is_paged' ) && is_paged() ) {
+			return true;
+		}
+		if ( function_exists( 'is_search' ) && is_search() ) {
+			return true;
+		}
+		if ( function_exists( 'is_feed' ) && is_feed() ) {
+			return true;
+		}
+		if ( function_exists( 'is_page' ) && is_page( array( 'sitemap', self::EMPTY_SITEMAP_PAGE_ID ) ) ) {
+			return true;
+		}
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+		if ( self::is_off_market_text( $uri ) ) {
+			return true;
+		}
+		if ( function_exists( 'get_queried_object' ) ) {
+			$obj = get_queried_object();
+			if ( is_object( $obj ) ) {
+				$blob = '';
+				foreach ( array( 'post_name', 'post_title', 'slug', 'name' ) as $field ) {
+					if ( ! empty( $obj->{$field} ) ) {
+						$blob .= ' ' . $obj->{$field};
+					}
+				}
+				if ( $blob !== '' && self::is_off_market_text( $blob ) ) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Keep UAE URLs. noindex / sitemap-drop Egypt, KSA, and other off-market city mills.
+	 */
+	private static function is_off_market_text( $text ) {
+		$text = strtolower( rawurldecode( (string) $text ) );
+		if ( $text === '' ) {
+			return false;
+		}
+		$keep = array(
+			'abu-dhabi',
+			'abudhabi',
+			'abu_dhabi',
+			'dubai',
+			'sharjah',
+			'ajman',
+			'fujairah',
+			'ras-al-khaimah',
+			'ras_al_khaimah',
+			'umm-al-quwain',
+			'al-ain',
+			'alain',
+			'mussafah',
+			'musaffah',
+			'united-arab-emirates',
+			'/uae',
+			'uae-',
+			'-uae',
+			'emirates',
+			'أبوظبي',
+			'دبي',
+			'الشارقة',
+			'عجمان',
+			'الفجيرة',
+			'رأس الخيمة',
+			'أم القيوين',
+			'العين',
+			'مصفح',
+		);
+		foreach ( $keep as $needle ) {
+			if ( strpos( $text, $needle ) !== false ) {
+				return false;
+			}
+		}
+		$drop = array(
+			'yanbu',
+			'jazan',
+			'jizan',
+			'jeddah',
+			'riyadh',
+			'dammam',
+			'khobar',
+			'makkah',
+			'mecca',
+			'madinah',
+			'medina',
+			'taif',
+			'tabuk',
+			'abha',
+			'najran',
+			'hail',
+			'qassim',
+			'buraidah',
+			'saudi',
+			'-ksa',
+			'ksa-',
+			'-sa/',
+			'-sa-',
+			'egypt',
+			'cairo',
+			'giza',
+			'alexandria',
+			'mansoura',
+			'tanta',
+			'zagazig',
+			'aswan',
+			'luxor',
+			'hurghada',
+			'sharm',
+			'6th-of-october',
+			'october-city',
+			'qatar',
+			'doha',
+			'kuwait',
+			'bahrain',
+			'manama',
+			'muscat',
+			'amman',
+			'jordan',
+			'baghdad',
+			'morocco',
+			'tunis',
+			'algeria',
+			'lebanon',
+			'beirut',
+			'المنصورة',
+			'الرياض',
+			'جدة',
+			'ينبع',
+			'الطائف',
+			'مصر',
+			'السعودية',
+		);
+		foreach ( $drop as $needle ) {
+			if ( strpos( $text, $needle ) !== false ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static function robots_body() {
+		$sitemap = home_url( '/?sitemap=1' );
+		return "# Elegant Live Fix " . ELEGANT_LIVE_FIX_VER . "\n"
+			. "User-agent: *\n"
+			. "Allow: /\n"
+			. "Disallow: /page/\n"
+			. "Disallow: /?s=\n"
+			. "Disallow: /wp-admin/\n"
+			. "Allow: /wp-admin/admin-ajax.php\n"
+			. "\n"
+			. "Sitemap: " . $sitemap . "\n";
+	}
+
+	private static function write_robots_file() {
+		$path = ABSPATH . 'robots.txt';
+		$want = self::robots_body();
+		$have = is_readable( $path ) ? (string) file_get_contents( $path ) : '';
+		if ( $have === $want ) {
+			return;
+		}
+		if ( $have !== '' && ! is_writable( $path ) && is_file( $path ) ) {
+			return;
+		}
+		@file_put_contents( $path, $want );
+	}
+
+	private static function quarantine_spam_paths() {
+		$slugs = array( 'contact-us', 'cities' );
+		foreach ( $slugs as $slug ) {
+			$path = ABSPATH . $slug;
+			if ( ! is_dir( $path ) ) {
+				continue;
+			}
+			if ( ! self::path_looks_like_spam( $path ) ) {
+				continue;
+			}
+			self::quarantine_path( $path );
+		}
+	}
+
+	private static function path_looks_like_spam( $path ) {
+		$candidates = array(
+			$path . '/index.html',
+			$path . '/index.htm',
+			$path . '/index.php',
+			$path . '/KOKO5000.html',
+		);
+		$markers = array( 'KOKO5000', 'VIP288', 'kepitinggabut', 'IRI CEPAT MAMPUS', 'Anti Nawala' );
+		foreach ( $candidates as $file ) {
+			if ( ! is_readable( $file ) ) {
+				continue;
+			}
+			$chunk = (string) file_get_contents( $file, false, null, 0, 8192 );
+			foreach ( $markers as $marker ) {
+				if ( strpos( $chunk, $marker ) !== false ) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private static function quarantine_path( $path ) {
+		$dest_root = WP_CONTENT_DIR . '/elegant-quarantine';
+		if ( ! is_dir( $dest_root ) ) {
+			wp_mkdir_p( $dest_root );
+			@file_put_contents( $dest_root . '/index.php', "<?php\n// Silence is golden.\n" );
+		}
+		$target = $dest_root . '/' . basename( $path ) . '-' . gmdate( 'YmdHis' );
+		if ( @rename( $path, $target ) ) {
+			self::purge_all_caches();
+			return;
+		}
+		foreach ( array( 'index.html', 'index.htm', 'index.php' ) as $name ) {
+			$file = $path . '/' . $name;
+			if ( is_file( $file ) ) {
+				@rename( $file, $target . '-' . $name );
+			}
+		}
+	}
+
+	private static function ensure_htaccess_rules() {
+		$htaccess = ABSPATH . '.htaccess';
+		$have     = is_readable( $htaccess ) ? (string) file_get_contents( $htaccess ) : '';
+		if ( strpos( $have, 'BEGIN Elegant Live Fix' ) !== false && strpos( $have, ELEGANT_LIVE_FIX_VER ) !== false ) {
+			return;
+		}
+		if ( ! function_exists( 'insert_with_markers' ) ) {
+			$misc = ABSPATH . 'wp-admin/includes/misc.php';
+			if ( is_readable( $misc ) ) {
+				require_once $misc;
+			}
+		}
+		if ( ! function_exists( 'insert_with_markers' ) ) {
+			return;
+		}
+		$lines = array(
+			'# ' . ELEGANT_LIVE_FIX_VER,
+			'<IfModule mod_rewrite.c>',
+			'RewriteEngine On',
+			'RewriteRule ^sitemap_index\\.xml$ /index.php?sitemap=1 [L]',
+			'RewriteRule ^([^/]+?)-sitemap([0-9]+)?\\.xml$ /index.php?sitemap=$1&sitemap_n=$2 [L]',
+			'RewriteRule ^page/([0-9]+)/?$ / [R=301,L]',
+			'</IfModule>',
+		);
+		$ok = insert_with_markers( $htaccess, 'Elegant Live Fix', $lines );
+		if ( $ok && strpos( $have, 'RewriteRule . /index.php' ) === false && strpos( $have, 'BEGIN WordPress' ) === false ) {
+			$wp_lines = array(
+				'<IfModule mod_rewrite.c>',
+				'RewriteEngine On',
+				'RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]',
+				'RewriteBase /',
+				'RewriteRule ^index\\.php$ - [L]',
+				'RewriteCond %{REQUEST_FILENAME} !-f',
+				'RewriteCond %{REQUEST_FILENAME} !-d',
+				'RewriteRule . /index.php [L]',
+				'</IfModule>',
+			);
+			insert_with_markers( $htaccess, 'WordPress', $wp_lines );
+		}
+		self::purge_all_caches();
+	}
+
+	private static function purge_all_caches() {
+		if ( function_exists( 'do_action' ) ) {
+			do_action( 'litespeed_purge_all' );
+			do_action( 'rank_math/sitemap/invalidate_object_type' );
+		}
+		if ( function_exists( 'wp_cache_flush' ) ) {
+			wp_cache_flush();
+		}
 	}
 }
 

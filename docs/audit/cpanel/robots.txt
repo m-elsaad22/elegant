@@ -1,0 +1,9 @@
+# Elegant Live Fix 5.0.0
+User-agent: *
+Allow: /
+Disallow: /page/
+Disallow: /?s=
+Disallow: /wp-admin/
+Allow: /wp-admin/admin-ajax.php
+
+Sitemap: https://elegantswimmingpools.com/?sitemap=1

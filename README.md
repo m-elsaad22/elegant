@@ -6,4 +6,6 @@
 - حالة الإصلاح الحي وخطوات التثبيت: [`docs/audit/LIVE-FIX-STATUS.md`](docs/audit/LIVE-FIX-STATUS.md)
 - ملف الإصلاح (mu-plugin): [`docs/audit/mu-plugins/elegant-live-fix.php`](docs/audit/mu-plugins/elegant-live-fix.php)
 - نفس الملف لـ Code Snippets: [`docs/audit/elegant-live-fix-snippet.php`](docs/audit/elegant-live-fix-snippet.php)
+- `robots.txt` لرفعه على جذر الموقع: [`docs/audit/cpanel/robots.txt`](docs/audit/cpanel/robots.txt)
+- قواعد `.htaccess` للخرائط والـ permalinks: [`docs/audit/cpanel/htaccess-elegant-live-fix.txt`](docs/audit/cpanel/htaccess-elegant-live-fix.txt)
 - سكربت REST بعد عودة كلمات مرور التطبيقات: [`docs/audit/apply_live_fixes.py`](docs/audit/apply_live_fixes.py)
